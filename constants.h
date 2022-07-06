@@ -15,39 +15,23 @@ enum STATUSES {
   Ended 
 };
 
-typedef struct {
-  int pid;
-  int frame_number;
-} page_id_t;
-
 typedef struct { 
   int pid;
   int status;
-  page_id_t* wsl;
+  int working_set;
+  int ptable[MAX_PG_PER_THREAD];
 } process_t;
 
 typedef struct {
-  page_id_t page_id;
+  int pid;
+  int page;
   int last_accessed;
 } frame_t;
 
-typedef struct {
-  page_id_t page_id;
-} table_item_t;
-
-typedef struct {
-  int pid;
-  table_item_t* entries;
-} table_t;
-
 void setup_main_memory(void);
 process_t empty_process(void);
-page_id_t* empty_wsl(void);
 void setup_process_list(void);
 void setup_process_tables();
-table_t empty_table();
-table_item_t* empty_entries();
-table_item_t empty_table_item();
 frame_t empty_frame(void);
 void spawn_new_process(void);
 bool is_empty_process(int);
@@ -58,3 +42,7 @@ int get_page_number_from_address(int);
 int get_offset_from_address(int);
 bool is_page_on_memory(int,int);
 void access_page(int, int , int);
+bool memory_is_full();
+void lru(int, int, int);
+void limited_lru(int, int, int);
+void allocate_page(int, int, int);
