@@ -46,3 +46,7 @@ bool memory_is_full();
 void lru(int, int, int);
 void limited_lru(int, int, int);
 void allocate_page(int, int, int);
+void print_frames();
+void setup_windows();
+void print_ptable(process_t);
+int* empty_ptable ();

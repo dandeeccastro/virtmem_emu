@@ -3,22 +3,28 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include <limits.h>
+#include <ncurses.h>
 
 #include "constants.h"
 
 process_t process_list[MAX_THREADS];
 frame_t main_memory[MAX_PAGES];
+WINDOW *memory_window, *ptable_window;
 
 int main(void) {
   setup_main_memory();
   setup_process_list();
+  setup_windows();
 
   for (int tick = 0; true; tick++) {
     if (tick % 3 == 0 && tick != 0) {
       run_processes(tick);
       spawn_new_process();
     } sleep(1);
+    print_frames();
   }
+
+  endwin();
 
   return 0;
 }
@@ -33,6 +39,7 @@ process_t empty_process(void) {
     .pid = 0,
     .status = -1,
     .working_set = -1,
+    .ptable = empty_ptable(),
   };
 }
 
@@ -68,8 +75,15 @@ process_t generate_random_process() {
     .pid = rand() % 65535,
     .status = Ready, 
     .working_set = 0,
-    .ptable = calloc(sizeof(int), MAX_PG_PER_THREAD),
+    .ptable = empty_ptable(),
   };
+}
+
+int* empty_ptable () {
+  int* result = calloc(sizeof(int), MAX_PG_PER_THREAD);
+  for ( int i = 0; i < MAX_PG_PER_THREAD; i++) 
+    result[i] = -1;
+  return result;
 }
 
 void run_processes(int tick) {
@@ -88,6 +102,8 @@ void run_processes(int tick) {
         else if (memory_is_full()) lru(pid, page, tick);
         else allocate_page(pid, page, tick);
       }
+      usleep(500000);
+      print_ptable(process_list[i]);
     }
   }
 }
@@ -195,4 +211,35 @@ void allocate_page(int pid, int page, int tick) {
       break;
     }
   }
+}
+
+void print_ptable(process_t process) {
+  wprintw(ptable_window,"[%04i]\n", process.pid);
+  for(int i = 0; i < MAX_PG_PER_THREAD; i++)
+    wprintw(ptable_window,"[%04i | %02i]\n", i, process.ptable[i]);
+  wrefresh(ptable_window);
+  // refresh();
+}
+
+void print_frames() {
+  wprintw(memory_window, "[FRAM | PID.PG | LAST]\n");
+  for (int i = 0; i < MAX_PAGES; i++)
+    wprintw(memory_window,"[%02i | %04i.%02i | %04i]\n", 
+        i, main_memory[i].pid, main_memory[i].page, main_memory[i].last_accessed);
+  wrefresh(memory_window);
+  // refresh();
+}
+
+void setup_windows() {
+  initscr();
+
+  ptable_window = newwin(MAX_PG_PER_THREAD,14,0,0);
+  memory_window = newwin(MAX_PAGES, 24, 0, 14);
+  box(ptable_window,0,0);
+  box(memory_window,0,14);
+
+  refresh();
+
+  print_ptable(process_list[0]);
+  print_frames();
 }
