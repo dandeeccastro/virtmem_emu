@@ -19,7 +19,7 @@ typedef struct {
   int pid;
   int status;
   int working_set;
-  int ptable[MAX_PG_PER_THREAD];
+  int *ptable;
 } process_t;
 
 typedef struct {
