@@ -50,3 +50,4 @@ void print_frames();
 void setup_windows();
 void print_ptable(process_t);
 int* empty_ptable ();
+void print_processes();
