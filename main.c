@@ -10,7 +10,7 @@
 process_t process_list[MAX_THREADS];
 frame_t main_memory[MAX_PAGES];
 
-WINDOW *memory_window, *ptable_window, *processes_window;
+WINDOW *memory_window, *ptable_window, *processes_window, *log_window;
 const int lines = 49;
 const int columns = 193;
 
@@ -23,9 +23,14 @@ int main(void) {
     if (tick % 3 == 0 && tick != 0) {
       run_processes(tick);
       spawn_new_process();
-    } sleep(1);
+    } 
+
     print_processes();
     print_frames();
+    update_log();
+
+    sleep(1);
+    wclear(log_window);
   }
 
   endwin();
@@ -71,7 +76,8 @@ void spawn_new_process(void) {
 
 bool is_empty_process(int index) {
   return process_list[index].pid == 0 && 
-    process_list[index].status == -1;
+    process_list[index].status == -1 &&
+    process_list[index].working_set == -1;
 }
 
 process_t generate_random_process() {
@@ -98,6 +104,8 @@ void run_processes(int tick) {
       int offset = get_offset_from_address(address);
       int pid = process_list[i].pid;
 
+      wprintw(log_window,"[run_processes] Process %6i will access page %2i\n", pid, page);
+
       if (is_page_on_memory(page, pid))
         access_page(page, pid, tick);
       else {
@@ -106,8 +114,8 @@ void run_processes(int tick) {
         else if (memory_is_full()) lru(pid, page, tick);
         else allocate_page(pid, page, tick);
       }
-      usleep(500000);
       print_ptable(process_list[i]);
+      usleep(400000);
     }
   }
 }
@@ -137,94 +145,83 @@ bool is_page_on_memory(int page, int pid) {
 }
 
 void access_page(int page, int pid, int tick) {
-  for (int i = 0; i < MAX_THREADS; i++) {
-    if (process_list[i].pid == pid) {
-      int frame = process_list[i].ptable[page];
-      main_memory[frame].last_accessed = tick;
-    }
-  }
+  int pindex = find_process(pid);
+  int frame = process_list[pindex].ptable[page];
+  update_frame(main_memory + frame, pid, page, tick);
 }
 
 bool memory_is_full() {
   for (int i = 0; i < MAX_PAGES; i++)
-    if (main_memory[i].pid == 0 && main_memory[i].page == -1 && main_memory[i].last_accessed == -1)
+    if (is_empty_frame(main_memory[i]))
       return false;
   return true;
 }
 
-void lru(int pid, int page, int tick) {
-  int selected = -1;
+int find_oldest_process_from_pid(int pid) {
   int oldest = INT_MAX;
-
-  for(int i = 0; i < MAX_PAGES; i++) {
-    if (main_memory[i].last_accessed < oldest) {
+  int result;
+  for (int i = 0; i < MAX_PAGES; i++) {
+    if (main_memory[i].last_accessed < oldest && pid == main_memory[i].pid) {
       oldest = main_memory[i].last_accessed;
-      selected = i;
+      result = i;
     }
   }
+  return result;
+}
 
-  int swappedPID = main_memory[selected].pid;
-  int swappedPage = main_memory[selected].page;
+int find_oldest_process() {
+  int oldest = INT_MAX;
+  int result;
+  for (int i = 0; i < MAX_PAGES; i++) {
+    if (main_memory[i].last_accessed < oldest) {
+      oldest = main_memory[i].last_accessed;
+      result = i;
+    }
+  }
+  return result;
+}
 
-  main_memory[selected].pid = pid;
-  main_memory[selected].page = page;
-  main_memory[selected].last_accessed = tick;
+void lru(int pid, int page, int tick) {
+  int selected = find_oldest_process();
 
-  for(int i = 0; i < MAX_THREADS; i++) {
-    if (process_list[i].pid == swappedPID) {
-      process_list[i].working_set--;
-      process_list[i].ptable[swappedPage] = -1;
+  update_ptable(main_memory[selected].pid, main_memory[selected].page, -1, -1);
+  update_frame(main_memory + selected, pid, page, tick);
+}
+
+void update_frame(frame_t* frame, int pid, int page, int tick) {
+  frame->pid = pid;
+  frame->page = page;
+  frame->last_accessed = tick;
+}
+
+void update_ptable(int pid, int page, int wsl_inc, int frame) {
+  for (int i = 0; i < MAX_THREADS; i++) {
+    if (process_list[i].pid == pid) {
+      process_list[i].working_set += wsl_inc;
+      process_list[i].ptable[page] = frame;
       break;
     }
   }
 }
 
 void limited_lru(int pid, int page, int tick) {
-  int selected = -1;
-  int oldest = INT_MAX;
+  int selected = find_oldest_process_from_pid(pid);
 
-  for(int i = 0; i < MAX_PAGES; i++) {
-    if (main_memory[i].last_accessed < oldest && main_memory[i].pid == pid) {
-      oldest = main_memory[i].last_accessed;
-      selected = i;
-    }
-  }
-
-  int swappedPID = main_memory[selected].pid;
-  int swappedPage = main_memory[selected].page;
-
-  main_memory[selected].pid = pid;
-  main_memory[selected].page = page;
-  main_memory[selected].last_accessed = tick;
-
-  for(int i = 0; i < MAX_THREADS; i++) {
-    if (process_list[i].pid == swappedPID) {
-      process_list[i].working_set--;
-      process_list[i].ptable[swappedPage] = -1;
-      break;
-    }
-  }
+  update_ptable(main_memory[selected].pid, main_memory[selected].page, -1, -1);
+  update_frame(main_memory + selected, pid, page, tick);
 }
 
 void allocate_page(int pid, int page, int tick) {
   int frame = -1;
   for (int i = 0; i < MAX_PAGES; i++) {
-    if (main_memory[i].pid == 0 && main_memory[i].page == -1 && main_memory[i].last_accessed == -1) {
-      main_memory[i].pid = pid;
-      main_memory[i].page = page;
-      main_memory[i].last_accessed = tick;
+    if (is_empty_frame(main_memory[i])) {
+      update_frame(main_memory + i, pid, page, tick);
       frame = i;
       break;
     }
   }
 
-  for (int i = 0; i < MAX_THREADS; i++) {
-    if (process_list[i].pid == pid) {
-      process_list[i].working_set++;
-      process_list[i].ptable[page] = frame;
-      break;
-    }
-  }
+  update_ptable(pid, page, 1, frame);
 }
 
 void print_ptable(process_t process) {
@@ -257,7 +254,7 @@ void print_processes() {
   wprintw(processes_window, "+----------------------------+\n");
   wprintw(processes_window, "| PROCESS LIST               |\n");
   wprintw(processes_window, "+----------------------------+\n");
-  for (int i = 0; i < (int) MAX_THREADS; i++)
+  for (int i = 0; i < (int) MAX_THREADS / 2; i++)
     wprintw(processes_window, "| %05i | %2i      %05i | %2i |\n", 
         process_list[i].pid, process_list[i].working_set,
         process_list[(int) MAX_THREADS / 2 + i].pid, process_list[(int) MAX_THREADS / 2 + i].working_set);
@@ -268,9 +265,30 @@ void print_processes() {
 void setup_windows() {
   initscr();
 
-  ptable_window = newwin(lines, (int) columns / 4, 0, 0);
-  processes_window = newwin(lines, (int) columns / 4, 0, (int) columns / 4);
-  memory_window = newwin(lines, (int) columns / 2, 0, (int) columns / 2);
+  int ptable_h = (int) MAX_PG_PER_THREAD / 2 + 4;
+  int ptable_w = (int) columns / 5;
+  int ptable_ypos = 0;
+  int ptable_xpos = 0;
+
+  int pwin_h = (int) MAX_THREADS / 2 + 4;
+  int pwin_w = (int) columns / 5;
+  int pwin_ypos = 0;
+  int pwin_xpos = (int) columns / 5;
+
+  int memwin_h = (int) MAX_PAGES / 2 + 4;
+  int memwin_w = (int) 2 * columns / 5;
+  int memwin_ypos = 0;
+  int memwin_xpos = (int) 2 * columns / 5;
+
+  int logwin_h = (int) MAX_PG_PER_THREAD / 2;
+  int logwin_w = (int) columns / 5;
+  int logwin_ypos = (int) MAX_PG_PER_THREAD / 2 + 4;
+  int logwin_xpos = 0;
+
+  ptable_window = newwin(ptable_h, ptable_w, ptable_ypos, ptable_xpos);
+  processes_window = newwin(pwin_h, pwin_w, pwin_ypos, pwin_xpos);
+  memory_window = newwin(memwin_h, memwin_w, memwin_ypos, memwin_xpos);
+  log_window = newwin(logwin_h, logwin_w, logwin_ypos, logwin_xpos);
 
   refresh();
 
@@ -278,3 +296,16 @@ void setup_windows() {
   print_processes();
   print_frames();
 }
+
+bool is_empty_frame(frame_t frame) {
+  return frame.last_accessed == -1 && frame.page == -1 && frame.pid == 0;
+}
+
+int find_process(int pid) {
+  for (int i = 0; i < MAX_THREADS; i++)
+    if (process_list[i].pid == pid)
+      return i;
+  return -1;
+}
+
+void update_log() { wrefresh(log_window); }
