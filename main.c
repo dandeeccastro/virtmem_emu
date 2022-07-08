@@ -29,7 +29,7 @@ int main(void) {
     print_frames();
     update_log();
 
-    sleep(1);
+    // sleep(1);
     wclear(log_window);
   }
 
@@ -106,16 +106,24 @@ void run_processes(int tick) {
 
       wprintw(log_window,"[run_processes] Process %6i will access page %2i\n", pid, page);
 
-      if (is_page_on_memory(page, pid))
-        access_page(page, pid, tick);
+      bool working_set_full = process_list[i].working_set == 4;
+      if (working_set_full)
+        limited_lru(pid, page, tick);
       else {
-        bool working_set_full = process_list[i].working_set == 4;
-        if (working_set_full) limited_lru(pid, page, tick);
+        if (is_page_on_memory(page, pid)) access_page(page, pid, tick);
         else if (memory_is_full()) lru(pid, page, tick);
         else allocate_page(pid, page, tick);
       }
+      // if (is_page_on_memory(page, pid))
+      //   access_page(page, pid, tick);
+      // else {
+      //   if (working_set_full) limited_lru(pid, page, tick);
+      //   else if (memory_is_full()) lru(pid, page, tick);
+      //   else allocate_page(pid, page, tick);
+      // }
+
       print_ptable(process_list[i]);
-      usleep(400000);
+      usleep(750000);
     }
   }
 }
@@ -186,6 +194,7 @@ void lru(int pid, int page, int tick) {
 
   update_ptable(main_memory[selected].pid, main_memory[selected].page, -1, -1);
   update_frame(main_memory + selected, pid, page, tick);
+  update_ptable(pid, page, 1, selected);
 }
 
 void update_frame(frame_t* frame, int pid, int page, int tick) {
@@ -209,6 +218,7 @@ void limited_lru(int pid, int page, int tick) {
 
   update_ptable(main_memory[selected].pid, main_memory[selected].page, -1, -1);
   update_frame(main_memory + selected, pid, page, tick);
+  update_ptable(pid, page, 1, selected);
 }
 
 void allocate_page(int pid, int page, int tick) {
@@ -227,10 +237,10 @@ void allocate_page(int pid, int page, int tick) {
 void print_ptable(process_t process) {
   wclear(ptable_window);
   wprintw(ptable_window, "+--------------------------+\n");
-  wprintw(ptable_window, "|  PTABLE     %06i       |\n", process.pid);
+  wprintw(ptable_window, "|  PTABLE     %6i       |\n", process.pid);
   wprintw(ptable_window, "+--------------------------+\n");
   for(int i = 0; i < (int) MAX_PG_PER_THREAD / 2; i++)
-    wprintw(ptable_window,"| %04i | %02i      %04i | %02i |\n", 
+    wprintw(ptable_window,"| %4i | %2i      %4i | %2i |\n", 
         i, process.ptable[i], (int) MAX_PG_PER_THREAD / 2 + i, process.ptable[(int) MAX_PG_PER_THREAD / 2 + i] );
   wprintw(ptable_window, "+--------------------------+\n");
   wrefresh(ptable_window);
@@ -242,7 +252,7 @@ void print_frames() {
   wprintw(memory_window, "| FRAM | PID.PG | LAST                                |\n");
   wprintw(memory_window, "+-----------------------------------------------------+\n");
   for (int i = 0; i < (int) MAX_PAGES / 2; i++)
-    wprintw(memory_window, "|  %02i | %06i.%02i | %04i       %02i | %06i.%02i | %04i  |\n", 
+    wprintw(memory_window, "|  %2i | %6i.%2i | %4i       %2i | %6i.%2i | %4i  |\n", 
         i, main_memory[i].pid, main_memory[i].page, main_memory[i].last_accessed,
         (int) MAX_PAGES / 2 + i, main_memory[(int) MAX_PAGES / 2 + i].pid, main_memory[(int) MAX_PAGES / 2 + i].page, main_memory[(int) MAX_PAGES / 2 + i].last_accessed);
   wprintw(memory_window, "+-----------------------------------------------------+\n");
@@ -255,7 +265,7 @@ void print_processes() {
   wprintw(processes_window, "| PROCESS LIST               |\n");
   wprintw(processes_window, "+----------------------------+\n");
   for (int i = 0; i < (int) MAX_THREADS / 2; i++)
-    wprintw(processes_window, "| %05i | %2i      %05i | %2i |\n", 
+    wprintw(processes_window, "| %5i | %2i      %5i | %2i |\n", 
         process_list[i].pid, process_list[i].working_set,
         process_list[(int) MAX_THREADS / 2 + i].pid, process_list[(int) MAX_THREADS / 2 + i].working_set);
   wprintw(processes_window, "+----------------------------+\n");
