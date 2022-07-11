@@ -27,9 +27,8 @@ int main(void) {
 
     print_processes();
     print_frames();
-    update_log();
 
-    // sleep(1);
+    update_log();
     wclear(log_window);
   }
 
@@ -114,13 +113,6 @@ void run_processes(int tick) {
         else if (memory_is_full()) lru(pid, page, tick);
         else allocate_page(pid, page, tick);
       }
-      // if (is_page_on_memory(page, pid))
-      //   access_page(page, pid, tick);
-      // else {
-      //   if (working_set_full) limited_lru(pid, page, tick);
-      //   else if (memory_is_full()) lru(pid, page, tick);
-      //   else allocate_page(pid, page, tick);
-      // }
 
       print_ptable(process_list[i]);
       usleep(750000);
