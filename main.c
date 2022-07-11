@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include <limits.h>
+#include <time.h>
 #include <ncurses.h>
 
 #include "constants.h"
@@ -11,6 +12,7 @@ process_t process_list[MAX_THREADS];
 frame_t main_memory[MAX_PAGES];
 
 WINDOW *memory_window, *ptable_window, *processes_window, *log_window;
+FILE *log_file;
 const int lines = 49;
 const int columns = 193;
 
@@ -18,6 +20,7 @@ int main(void) {
   setup_main_memory();
   setup_process_list();
   setup_windows();
+  setup_logging();
 
   for (int tick = 0; true; tick++) {
     if (tick % 3 == 0 && tick != 0) {
@@ -104,6 +107,8 @@ void run_processes(int tick) {
       int pid = process_list[i].pid;
 
       wprintw(log_window,"[run_processes] Process %6i will access page %2i\n", pid, page);
+      fprintf(log_file,"[%li](run_processes){access,%06i,%02i}\n",time(NULL),pid, page);
+      fflush(log_file);
 
       bool working_set_full = process_list[i].working_set == 4;
       if (working_set_full)
@@ -147,6 +152,8 @@ bool is_page_on_memory(int page, int pid) {
 void access_page(int page, int pid, int tick) {
   int pindex = find_process(pid);
   int frame = process_list[pindex].ptable[page];
+  fprintf(log_file,"[%li](access_page){access,%06i,%02i,%03i}\n",time(NULL),pid, page, tick);
+  fflush(log_file);
   update_frame(main_memory + frame, pid, page, tick);
 }
 
@@ -184,6 +191,8 @@ int find_oldest_process() {
 void lru(int pid, int page, int tick) {
   int selected = find_oldest_process();
 
+  fprintf(log_file,"[%li](lru){allocate,%06i,%02i,%03i}\n",time(NULL),pid, page, tick);
+  fflush(log_file);
   update_ptable(main_memory[selected].pid, main_memory[selected].page, -1, -1);
   update_frame(main_memory + selected, pid, page, tick);
   update_ptable(pid, page, 1, selected);
@@ -208,6 +217,9 @@ void update_ptable(int pid, int page, int wsl_inc, int frame) {
 void limited_lru(int pid, int page, int tick) {
   int selected = find_oldest_process_from_pid(pid);
 
+  fprintf(log_file,"[%li](limited_lru){allocate,%06i,%02i,%03i}\n",time(NULL),pid, page, tick);
+  fflush(log_file);
+
   update_ptable(main_memory[selected].pid, main_memory[selected].page, -1, -1);
   update_frame(main_memory + selected, pid, page, tick);
   update_ptable(pid, page, 1, selected);
@@ -215,6 +227,7 @@ void limited_lru(int pid, int page, int tick) {
 
 void allocate_page(int pid, int page, int tick) {
   int frame = -1;
+  fprintf(log_file,"[%li](allocate_page){allocate,%06i,%02i,%03i}\n",time(NULL),pid, page, tick);
   for (int i = 0; i < MAX_PAGES; i++) {
     if (is_empty_frame(main_memory[i])) {
       update_frame(main_memory + i, pid, page, tick);
@@ -246,7 +259,8 @@ void print_frames() {
   for (int i = 0; i < (int) MAX_PAGES / 2; i++)
     wprintw(memory_window, "|  %2i | %6i.%2i | %4i       %2i | %6i.%2i | %4i  |\n", 
         i, main_memory[i].pid, main_memory[i].page, main_memory[i].last_accessed,
-        (int) MAX_PAGES / 2 + i, main_memory[(int) MAX_PAGES / 2 + i].pid, main_memory[(int) MAX_PAGES / 2 + i].page, main_memory[(int) MAX_PAGES / 2 + i].last_accessed);
+        (int) MAX_PAGES / 2 + i, main_memory[(int) MAX_PAGES / 2 + i].pid, 
+        main_memory[(int) MAX_PAGES / 2 + i].page, main_memory[(int) MAX_PAGES / 2 + i].last_accessed);
   wprintw(memory_window, "+-----------------------------------------------------+\n");
   wrefresh(memory_window);
 }
@@ -311,3 +325,9 @@ int find_process(int pid) {
 }
 
 void update_log() { wrefresh(log_window); }
+
+void setup_logging() { 
+  char filename[40];
+  sprintf(filename, "mem.%li.log\n", time(NULL));
+  log_file = fopen(filename, "wa"); 
+}

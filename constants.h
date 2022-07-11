@@ -56,3 +56,4 @@ bool is_empty_frame(frame_t);
 void update_ptable(int, int, int, int);
 int find_process(int);
 void update_log();
+void setup_logging();
