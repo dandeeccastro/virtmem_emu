@@ -36,6 +36,7 @@ frame_t empty_frame(void);
 void spawn_new_process(void);
 bool is_empty_process(int);
 void run_processes(int);
+void run_process(int);
 process_t generate_random_process(void);
 int generate_random_address();
 int get_page_number_from_address(int);

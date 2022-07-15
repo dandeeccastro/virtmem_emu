@@ -16,17 +16,22 @@ FILE *log_file;
 const int lines = 49;
 const int columns = 193;
 
+int process_index = 0;
+int running_processes = 0;
+
 int main(void) {
   setup_main_memory();
   setup_process_list();
   setup_windows();
   setup_logging();
 
-  for (int tick = 0; true; tick++) {
+  for (int tick = 0; tick < 300; tick++) {
     if (tick % 3 == 0 && tick != 0) {
-      run_processes(tick);
+      // run_processes(tick);
       spawn_new_process();
     } 
+
+    if (tick > 3) run_process(tick);
 
     print_processes();
     print_frames();
@@ -71,6 +76,7 @@ void spawn_new_process(void) {
   for (int i = 0; i < MAX_THREADS; i++) {
     if (is_empty_process(i)) {
       process_list[i] = generate_random_process();
+      running_processes++;
       break;
     }
   }
@@ -123,6 +129,27 @@ void run_processes(int tick) {
       usleep(750000);
     }
   }
+}
+
+void run_process(int tick) {
+  int address = generate_random_address();
+  int page = get_page_number_from_address(address);
+  int pid = process_list[process_index].pid;
+
+  if (process_list[process_index].working_set == 4)
+    limited_lru(pid, page, tick);
+  else {
+    if (is_page_on_memory(page, pid)) access_page(page, pid, tick);
+    else if (memory_is_full()) lru(pid, page, tick);
+    else allocate_page(pid, page, tick);
+  }
+
+  print_ptable(process_list[process_index]);
+  usleep(750000);
+
+  if (process_index + 1 >= running_processes)
+    process_index = 0;
+  else process_index++;
 }
 
 int generate_random_address() {
@@ -328,6 +355,6 @@ void update_log() { wrefresh(log_window); }
 
 void setup_logging() { 
   char filename[40];
-  sprintf(filename, "mem.%li.log\n", time(NULL));
+  sprintf(filename, "mem.%li.log", time(NULL));
   log_file = fopen(filename, "wa"); 
 }
