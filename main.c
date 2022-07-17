@@ -116,7 +116,7 @@ void run_processes(int tick) {
       fprintf(log_file,"[%li](run_processes){access,%06i,%02i}\n",time(NULL),pid, page);
       fflush(log_file);
 
-      bool working_set_full = process_list[i].working_set == 4;
+      bool working_set_full = process_list[i].working_set == WORKING_SET_LIMIT;
       if (working_set_full)
         limited_lru(pid, page, tick);
       else {
@@ -136,7 +136,7 @@ void run_process(int tick) {
   int page = get_page_number_from_address(address);
   int pid = process_list[process_index].pid;
 
-  if (process_list[process_index].working_set == 4)
+  if (process_list[process_index].working_set == WORKING_SET_LIMIT)
     limited_lru(pid, page, tick);
   else {
     if (is_page_on_memory(page, pid)) access_page(page, pid, tick);
